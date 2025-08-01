@@ -41,5 +41,3 @@ type RobotState struct {
 	Y        uint // Y coordinate of the robot (0-GridSize)
 	HasCrate bool // Whether the robot is currently carrying a crate
 }
-
-// ALL DONE.

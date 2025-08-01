@@ -72,11 +72,13 @@ func AddRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
 	robotID := uuid.New().String()
 	// Create robot with defaults
 	robot := &robotImpl{
-		id:         robotID,
-		warehouse:  wh,
-		state:      RobotState{X: initialX, Y: initialY, HasCrate: false},
-		mu:         &sync.Mutex{},
-		stopWorker: make(chan struct{}),
+		id:             robotID,
+		warehouse:      wh,
+		state:          RobotState{X: initialX, Y: initialY, HasCrate: false},
+		taskQueue:      make(chan *robotTask, 100),     // Buffered channel for tasks
+		cancelChannels: make(map[string]chan struct{}), // Initialise
+		mu:             &sync.Mutex{},
+		stopWorker:     make(chan struct{}),
 	}
 
 	// Add robot to list robots in this warehouse
@@ -85,6 +87,7 @@ func AddRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
 	wh.gridyx[initialY][initialX] = robotID
 
 	// Start worker
+	go robot.startWorker()
 
 	return robot, nil
 }

@@ -3,7 +3,9 @@ package librobot
 // This file performs unit tests on the librobot package to verify correct operation
 
 import (
+	"sync"
 	"testing"
+	"time"
 )
 
 // TestNewWarehouse checks if warehouse creation is successful.
@@ -103,5 +105,156 @@ func TestRobot_AddRobot(t *testing.T) {
 
 func TestRobot_EnqueueTask(t *testing.T) {
 	t.Log("Starting TestRobot_EnqueueTask")
+	test_warehouse := NewWarehouse()
+	test_robot, _ := AddRobot(test_warehouse, 0, 0)
 
+	t.Log("Setting up TestRobot_EnqueueTask")
+	taskID, posCh, errCh := test_robot.EnqueueTask("N")
+
+	select {
+	case state := <-posCh:
+		if state.X != 0 || state.Y != 1 {
+			t.Errorf("Expected (0,1) after N, got (%d,%d)", state.X, state.Y)
+		}
+	case err := <-errCh:
+		t.Fatalf("Task %s failed: %v", taskID, err)
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for N command completion")
+	}
+
+	// Ensure task completes
+	select {
+	case err := <-errCh:
+		if err != nil {
+			t.Fatalf("Task %s failed unexpectedly: %v", taskID, err)
+		}
+	case <-time.After(time.Second): // Small wait for channel to close
+		// OK, likely finished
+	}
+	if test_robot.CurrentState().X != 0 || test_robot.CurrentState().Y != 1 {
+		t.Errorf("Final state after N incorrect: expected (0,1), got (%d,%d)", test_robot.CurrentState().X, test_robot.CurrentState().Y)
+	}
+
+}
+
+func TestRobot_CancelTask(t *testing.T) {
+	t.Log("Starting TestRobot_CancelTask")
+	test_warehouse := NewWarehouse()
+	r, err := AddRobot(test_warehouse, 0, 0)
+	if err != nil {
+		t.Fatalf("Failed to add robot: %v", err)
+	}
+
+	initialState := r.CurrentState()
+
+	//  Test cancelling a task in progress
+	longTaskCommands := "NNNNNNNNNN" // 10 commands
+	taskID1, posCh1, errCh1 := r.EnqueueTask(longTaskCommands)
+
+	// Wait for a few commands to execute, then cancel
+	//time.Sleep(2 * CommandExecutionTime) // Let 2 commands run
+
+	// Better, more deterministic
+	// Wait for a few commands to execute deterministically
+	const updatesToWait = 2
+	var updatesReceived sync.WaitGroup
+	updatesReceived.Add(updatesToWait)
+
+	go func() {
+		for range posCh1 {
+			updatesReceived.Done()
+		}
+	}()
+
+	// Wait until we know at least 2 commands have finished.
+	// We'll use a timeout here just in case something is wrong with the task execution.
+	waitTimeout := time.After(time.Duration(updatesToWait+1) * CommandExecutionTime)
+	done := make(chan struct{})
+	go func() {
+		updatesReceived.Wait()
+		close(done)
+	}()
+
+	select {
+	case <-done:
+		// We've received the expected number of updates, now we can cancel.
+	case <-waitTimeout:
+		t.Fatal("Timeout waiting for position updates before cancellation")
+	}
+
+	// Cancel the task
+	err = r.CancelTask(taskID1)
+	if err != nil {
+		t.Fatalf("Failed to cancel task 1: %v", err)
+	}
+
+	// Verify task 1 aborts and returns cancellation error
+	select {
+	case finalErr := <-errCh1:
+		if finalErr.Error() != "task cancelled" { // Check for specific cancellation error
+			t.Errorf("Task 1: Expected 'task cancelled' error, got %v", finalErr)
+		}
+	case <-time.After(2 * CommandExecutionTime): // Wait a bit more for cancellation to propagate
+		t.Fatal("Timeout waiting for Task 1 cancellation error")
+	}
+
+	// Ensure position channel is closed (no more updates)
+	select {
+	case _, ok := <-posCh1:
+		if ok {
+			t.Error("Position channel 1 is still open after cancellation")
+		}
+	default: // If nothing immediately, means it might be closed. Need to re-check after a brief moment
+	}
+
+	// Give the robot time to settle after cancellation before next task
+	time.Sleep(CommandExecutionTime)
+	robotStateAfterCancel := r.CurrentState()
+	// It should have moved 2 units north from (0,0) before cancellation.
+	if robotStateAfterCancel.X != initialState.X || robotStateAfterCancel.Y != initialState.Y+2 {
+		t.Errorf("Robot state after cancellation unexpected. Expected (%d,%d), got (%d,%d)",
+			initialState.X, initialState.Y+2, robotStateAfterCancel.X, robotStateAfterCancel.Y)
+	}
+
+	// Test cancelling a queued task (should not start)
+	taskID2, posCh2, errCh2 := r.EnqueueTask("EEEE") // 4 commands
+
+	// Cancel task 2 immediately before it has a chance to start
+	err = r.CancelTask(taskID2)
+	if err != nil {
+		t.Fatalf("Failed to cancel task 2: %v", err)
+	}
+
+	// Wait much longer than the task would take
+	select {
+	case state := <-posCh2:
+		t.Errorf("Task 2: Received unexpected position update for cancelled queued task: %+v", state)
+	case finalErr := <-errCh2:
+		if finalErr.Error() != "task cancelled" {
+			t.Errorf("Task 2: Expected 'task cancelled' error, got %v", finalErr)
+		}
+	case <-time.After(5 * CommandExecutionTime): // Longer than 4 commands + overhead
+		// This is good, means it likely never started or was quickly cancelled.
+		t.Log("Task 2: Timeout reached, likely cancelled before execution.")
+	}
+
+	// Verify task 2's channels are closed (no activity)
+	select {
+	case _, ok := <-posCh2:
+		if ok {
+			t.Error("Position channel 2 is still open after cancellation")
+		}
+	default:
+	}
+
+	// Final robot position should remain the same as after task 1 cancellation
+	if r.CurrentState() != robotStateAfterCancel {
+		t.Errorf("Robot state changed after cancelling queued task. Expected %+v, got %+v", robotStateAfterCancel, r.CurrentState())
+	}
+
+	// 3. Test cancelling a non-existent task
+	err = r.CancelTask("non-existent-task-id")
+	if err == nil {
+		t.Errorf("Expected error for non-existent task, got %v", err)
+	}
 }
