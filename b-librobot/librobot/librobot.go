@@ -1,6 +1,8 @@
 package librobot
 
-import "time"
+import (
+	"time"
+)
 
 // Constants used for simulation
 const (

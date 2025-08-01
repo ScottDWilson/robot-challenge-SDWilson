@@ -1,8 +1,11 @@
 package librobot
 
 import (
+	"errors"
 	"log"
 	"sync"
+
+	"github.com/google/uuid" // Create unique identifier for each warehouse, robot
 )
 
 // An implementation of the warehouse for simulation purposes
@@ -47,6 +50,41 @@ func (w *warehouseImpl) Robots() []Robot {
 // AddRobot adds a new robot to the warehouse at the specified initial coordinates.
 // It returns the new Robot instance and an error if the position is invalid or occupied.
 func AddRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
-	// TODO; add robot implementation to list, check for errors
+	// Type assertion to get the concrete warehouseImpl
+	wh, ok := w.(*warehouseImpl)
+	if !ok {
+		return nil, errors.New("invalid warehouse type")
+	}
 
+	// Safe access
+	wh.mu.Lock()
+	defer wh.mu.Unlock()
+
+	// Check desired initial position is within the specified grid size (10x10 default)
+	if initialX > GridSize || initialY > GridSize {
+		return nil, errors.New("error: initial X and Y are out of bounds")
+	}
+	if wh.gridyx[initialY][initialX] != "" {
+		return nil, errors.New("error: a robot exists at this positin")
+	}
+
+	// Initialise robot Uuid
+	robotID := uuid.New().String()
+	// Create robot with defaults
+	robot := &robotImpl{
+		id:         robotID,
+		warehouse:  wh,
+		state:      RobotState{X: initialX, Y: initialY, HasCrate: false},
+		mu:         &sync.Mutex{},
+		stopWorker: make(chan struct{}),
+	}
+
+	// Add robot to list robots in this warehouse
+	wh.robots[robotID] = robot
+	// Add robot to grid
+	wh.gridyx[initialY][initialX] = robotID
+
+	// Start worker
+
+	return robot, nil
 }
