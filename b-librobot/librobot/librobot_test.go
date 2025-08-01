@@ -258,3 +258,236 @@ func TestRobot_CancelTask(t *testing.T) {
 		t.Errorf("Expected error for non-existent task, got %v", err)
 	}
 }
+
+func TestCrateWarehouse_Robot(t *testing.T) {
+	// create new Crate warehouse
+	cw := NewCrateWarehouse()
+	cwImpl := cw.(*warehouseImpl)
+	// Add robot
+	r1, err := AddRobot(cw, 0, 0)
+	if err != nil {
+		t.Fatalf("Failed to add robot: %v", err)
+	}
+
+	// Try to enqueue a crate command in a crate warehouse with no crates
+	taskID, _, errCh := r1.EnqueueTask("G")
+	select {
+	case finalErr := <-errCh:
+		if finalErr == nil {
+			t.Errorf("Expected error, got: %v on taskID %v", finalErr, taskID)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for invalid command error")
+	}
+	// Try drop crate not exists
+	taskID, _, errCh = r1.EnqueueTask("D")
+	select {
+	case finalErr := <-errCh:
+		if finalErr == nil {
+			t.Errorf("Expected error, got: %v on taskid %v", finalErr, taskID)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for invalid command error")
+	}
+
+	// Add crates
+	cw.AddCrate(0, 0)
+
+	// Now try pick crate
+	taskID1, _, errCh1 := r1.EnqueueTask("G")
+	// Wait for completion
+	time.Sleep(2 * CommandExecutionTime)
+
+	select {
+	case finalErr := <-errCh1:
+		if finalErr != nil {
+			t.Errorf("Error occured picking crate, got: %v on taskid %v", finalErr, taskID1)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for crate pick command")
+	}
+
+	// Check crate no longer exists; should be false
+	if cwImpl.cratesyx[0][0] {
+		t.Fatalf("Error crate not picked; on task %v", taskID1)
+	}
+	// Check robot holding crate
+	if !r1.CurrentState().HasCrate {
+		t.Fatalf("Error crate not picked by robot; on task %v", taskID1)
+	}
+
+	// Add crate again
+	cw.AddCrate(0, 0)
+	// Try pick crate again; should have error
+	taskID_repeat, _, errCh_repeat := r1.EnqueueTask("G")
+	// Wait for completion
+	time.Sleep(2 * CommandExecutionTime)
+	select {
+	case finalErr := <-errCh_repeat:
+		if finalErr != ErrRobotHasCrate {
+			t.Errorf("Error occured picking crate, got: %v on taskid %v", finalErr, taskID_repeat)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for crate pick command")
+	}
+	// Check crate still exists; should be true
+	if !cwImpl.cratesyx[0][0] {
+		t.Fatalf("Error crate not picked; on task %v", taskID1)
+	}
+	// Check robot holding crate
+	if !r1.CurrentState().HasCrate {
+		t.Fatalf("Error crate not picked by robot; on task %v", taskID1)
+	}
+	// remove crate we added
+	cw.DelCrate(0, 0)
+
+	// Now try drop crate
+	taskID2, _, errCh2 := r1.EnqueueTask("D")
+	// Wait for completion
+	time.Sleep(2 * CommandExecutionTime)
+	select {
+	case finalErr := <-errCh2:
+		if finalErr != nil {
+			t.Errorf("Error occured dropping crate, got: %v on taskid %v", finalErr, taskID2)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for crate drop command")
+	}
+	// Check crate no longer exists; should be false
+	if !cwImpl.cratesyx[0][0] {
+		t.Fatalf("Error crate not dropped; on task %v", taskID1)
+	}
+	// Check robot holding crate
+	if r1.CurrentState().HasCrate {
+		t.Fatalf("Error crate not dropped by robot; on task %v", taskID1)
+	}
+
+}
+
+func TestWarehouse_CrateCommands(t *testing.T) {
+	w := NewWarehouse()
+	r, err := AddRobot(w, 0, 0)
+	if err != nil {
+		t.Fatalf("Failed to add robot: %v", err)
+	}
+
+	// Try to enqueue a crate command in a basic warehouse
+	taskID, _, errCh := r.EnqueueTask("G")
+	select {
+	case finalErr := <-errCh:
+		if finalErr == nil {
+			t.Errorf("Expected error, got: %v on taskID %v", finalErr, taskID)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for invalid command error")
+	}
+
+	taskID, _, errCh = r.EnqueueTask("D")
+	select {
+	case finalErr := <-errCh:
+		if finalErr == nil {
+			t.Errorf("Expected error, got: %v on taskid %v", finalErr, taskID)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for invalid command error")
+	}
+}
+
+// TestCrateManagement checks AddCrate and DelCrate functionality.
+func TestCrateManagement(t *testing.T) {
+	cw := NewCrateWarehouse()
+	cwImpl := cw.(*warehouseImpl)
+
+	// Test AddCrate
+	err := cw.AddCrate(1, 1)
+	if err != nil {
+		t.Fatalf("AddCrate(1,1) failed: %v", err)
+	}
+	if !cwImpl.cratesyx[1][1] {
+		t.Error("Crate not found at (1,1) after AddCrate")
+	}
+
+	// Test AddCrate to occupied spot
+	err = cw.AddCrate(1, 1)
+	if err != ErrCrateExists {
+		t.Errorf("AddCrate(1,1) (occupied): Expected %v, got %v", ErrCrateExists, err)
+	}
+
+	// Test AddCrate out of bounds
+	err = cw.AddCrate(GridSize+1, 1)
+	if err != ErrOutOfBounds {
+		t.Errorf("AddCrate(out of bounds): Expected %v, got %v", ErrOutOfBounds, err)
+	}
+
+	// Test DelCrate
+	err = cw.DelCrate(1, 1)
+	if err != nil {
+		t.Fatalf("DelCrate(1,1) failed: %v", err)
+	}
+	if cwImpl.cratesyx[1][1] {
+		t.Error("Crate found at (1,1) after DelCrate")
+	}
+
+	// Test DelCrate from empty spot
+	err = cw.DelCrate(1, 1)
+	if err != ErrCrateNotFound {
+		t.Errorf("DelCrate(1,1) (empty): Expected %v, got %v", ErrCrateNotFound, err)
+	}
+
+	// Test DelCrate out of bounds
+	err = cw.DelCrate(GridSize+1, 1)
+	if err != ErrOutOfBounds {
+		t.Errorf("DelCrate(out of bounds): Expected %v, got %v", ErrOutOfBounds, err)
+	}
+
+	// Test Add/Del Crate on a non-CrateWarehouse (should fail)
+	w := NewWarehouse()
+	err = w.(CrateWarehouse).AddCrate(1, 1) // Type assert to call method
+	if err != ErrInvalidWarehouseType {
+		t.Errorf("AddCrate on non-CrateWarehouse: Expected %v, got %v", ErrInvalidWarehouseType, err)
+	}
+	err = w.(CrateWarehouse).DelCrate(1, 1)
+	if err != ErrInvalidWarehouseType {
+		t.Errorf("DelCrate on non-CrateWarehouse: Expected %v, got %v", ErrInvalidWarehouseType, err)
+	}
+}
+
+func TestInvalidCommands(t *testing.T) {
+	w := NewWarehouse()
+	r, err := AddRobot(w, 5, 5)
+	if err != nil {
+		t.Fatalf("Failed to add robot: %v", err)
+	}
+
+	initialState := r.CurrentState()
+
+	taskID, posCh, errCh := r.EnqueueTask("NX") // N then an invalid command 'X'
+	select {
+	case state := <-posCh:
+		// First command 'N' should succeed, robot moves to (5,6)
+		if state.X != 5 || state.Y != 6 {
+			t.Errorf("Expected (5,6) after 'N', got (%d,%d) on task %v", state.X, state.Y, taskID)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for first valid command")
+	}
+
+	select {
+	case taskErr := <-errCh:
+		expectedErrStr := "unknown command: X"
+		if taskErr == nil || taskErr.Error() != expectedErrStr {
+			t.Errorf("Expected error '%s', got '%v'", expectedErrStr, taskErr)
+		}
+	case <-time.After(2 * CommandExecutionTime): // Wait for error from second command
+		t.Fatal("Timeout waiting for invalid command error")
+	}
+
+	// Robot should be at (5,6) (after 'N' and before 'X' aborted the task)
+	finalState := r.CurrentState()
+	if finalState.X != 5 || finalState.Y != 6 {
+		t.Errorf("Robot state incorrect after invalid command abort. Expected (5,6), got (%d,%d)", finalState.X, finalState.Y)
+	}
+	if finalState == initialState {
+		t.Error("Robot state should have changed after first valid command")
+	}
+}

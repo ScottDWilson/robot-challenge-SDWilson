@@ -2,6 +2,7 @@ package librobot
 
 import (
 	"errors"
+	"fmt"
 	"log"
 	"sync"
 
@@ -15,12 +16,32 @@ import (
 // The warehouse grid dimensions are defined by GridSize.
 func NewWarehouse() Warehouse {
 	w := &warehouseImpl{
-		robots: make(map[string]*robotImpl),
-		gridyx: [GridSize + 1][GridSize + 1]string{}, // Initialize with empty strings
-		mu:     &sync.RWMutex{},                      // Controls access to changing settings so only one at a time
+		robots:     make(map[string]*robotImpl),
+		gridyx:     [GridSize + 1][GridSize + 1]string{}, // Initialize with empty strings
+		mu:         &sync.RWMutex{},                      // Controls access to changing settings so only one at a time
+		has_crates: false,
 	}
 	log.Println("New Warehouse created.")
 	return w
+}
+
+// NewCrateWarehouse creates a new warehouse with no robots. This warehouse can accept crates
+// This function now returns the new CrateWarehouse interface.
+func NewCrateWarehouse() CrateWarehouse {
+	cw := &warehouseImpl{
+		robots: make(map[string]*robotImpl),
+		gridyx: [GridSize + 1][GridSize + 1]string{}, // Initialize with empty strings
+		mu:     &sync.RWMutex{},                      // Controls access to changing settings so only one at a time
+		// cratesyx defaults to false
+		has_crates: true,
+	}
+	log.Println("New Crate Warehouse created.")
+	return cw
+}
+
+// Helper function to create a unique key for crate locations
+func crateKey(x, y uint) string {
+	return fmt.Sprintf("%d,%d", x, y)
 }
 
 // warehouseImpl implements the Warehouse and later CrateWarehouse interfaces.
@@ -29,10 +50,10 @@ type warehouseImpl struct {
 	robots map[string]*robotImpl
 	// Gridyx stores the ID of the robot occupying a cell, or an empty string if vacant.
 	// gridyx[y][x] for easier access: grid[row][column]
-	gridyx [GridSize + 1][GridSize + 1]string
-	mu     *sync.RWMutex // Mutex to protect access to robots and grid
-	// crates stores whether a crate is present at a specific "x,y" coordinate string.
-	crates map[string]bool // Only for CrateWarehouse
+	gridyx     [GridSize + 1][GridSize + 1]string
+	mu         *sync.RWMutex                    // Mutex to protect access to robots and grid
+	cratesyx   [GridSize + 1][GridSize + 1]bool // 2D array of crate locations. Refactor if warehouse can be huge for memory optimisation
+	has_crates bool
 }
 
 // Robots returns a list of all robots currently in the warehouse.
@@ -56,6 +77,8 @@ func AddRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
 		return nil, errors.New("invalid warehouse type")
 	}
 
+	isCrateWarehouse := wh.has_crates
+
 	// Safe access
 	wh.mu.Lock()
 	defer wh.mu.Unlock()
@@ -75,6 +98,7 @@ func AddRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
 		id:             robotID,
 		warehouse:      wh,
 		state:          RobotState{X: initialX, Y: initialY, HasCrate: false},
+		canPickCrates:  isCrateWarehouse,
 		taskQueue:      make(chan *robotTask, 100),     // Buffered channel for tasks
 		cancelChannels: make(map[string]chan struct{}), // Initialise
 		mu:             &sync.Mutex{},
@@ -90,4 +114,46 @@ func AddRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
 	go robot.startWorker()
 
 	return robot, nil
+}
+
+// Adds a crate to the specified x y coordinates
+func (cw *warehouseImpl) AddCrate(x uint, y uint) error {
+	if !cw.has_crates {
+		return ErrInvalidWarehouseType
+	}
+
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+
+	if x > GridSize || y > GridSize {
+		return ErrOutOfBounds
+	}
+	// Check for a crate with a direct array lookup.
+	if cw.cratesyx[y][x] {
+		return ErrCrateExists
+	}
+	cw.cratesyx[y][x] = true
+	log.Printf("Crate added at (%d, %d).", x, y)
+	return nil
+}
+
+// Deletes a crate at the specified x y coordinates
+func (cw *warehouseImpl) DelCrate(x uint, y uint) error {
+	if !cw.has_crates {
+		return ErrInvalidWarehouseType
+	}
+
+	cw.mu.Lock()
+	defer cw.mu.Unlock()
+
+	if x > GridSize || y > GridSize {
+		return ErrOutOfBounds
+	}
+	// Check for a crate with a direct array lookup.
+	if !cw.cratesyx[y][x] {
+		return ErrCrateNotFound
+	}
+	cw.cratesyx[y][x] = false
+	log.Printf("Crate deleted from (%d, %d).", x, y)
+	return nil
 }

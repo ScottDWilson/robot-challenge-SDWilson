@@ -17,6 +17,7 @@ type robotImpl struct {
 	id             string                   // Unique identifier for a robot
 	warehouse      *warehouseImpl           // Warehouse robot
 	state          RobotState               // Store the current state of the robot; x, y, crate
+	canPickCrates  bool                     // Only robots in CrateWarehouses can pick crates
 	taskQueue      chan *robotTask          // Channel to queue robot tasks
 	cancelChannels map[string]chan struct{} // Map to store cancellation channels for each task
 	mu             *sync.Mutex              // Mutex to protect robot's internal state
@@ -192,6 +193,25 @@ func (r *robotImpl) executeCommand(cmd rune) error {
 		newX++
 	case 'W':
 		newX--
+	// Crate interactions
+	case 'G':
+		if !r.canPickCrates {
+			log.Println("Robot not set correctly")
+			return errors.New("error; robot can not pick crates in non-crate warehouse")
+		}
+		// Get cratewarehouse implementation
+		if err := r.grabCrate(); err != nil {
+			return err
+		}
+
+	case 'D':
+		if !r.canPickCrates {
+			return errors.New("error; robot can not pick crates in non-crate warehouse")
+		}
+		if err := r.dropCrate(); err != nil {
+			return err
+		}
+
 	default:
 		return fmt.Errorf("unknown command: %c", cmd)
 	}
@@ -216,6 +236,36 @@ func (r *robotImpl) executeCommand(cmd rune) error {
 	r.state.Y = newY
 
 	log.Printf("Robot %s: Moved to (%d, %d)", r.id, r.state.X, r.state.Y)
+	return nil
+}
+
+// Picks crate at current robot position
+func (r *robotImpl) grabCrate() error {
+	// Check robot carrying crate
+	if r.state.HasCrate {
+		return ErrRobotHasCrate
+	}
+	// Check crate exists at position
+	if !r.warehouse.cratesyx[r.state.Y][r.state.X] {
+		return ErrCrateNotFound
+	}
+	r.warehouse.cratesyx[r.state.Y][r.state.X] = false
+	r.state.HasCrate = true
+	return nil
+}
+
+// Drops crate at current robot position
+func (r *robotImpl) dropCrate() error {
+	// Check robot carrying crate
+	if !r.state.HasCrate {
+		return ErrRobotNotCrate
+	}
+	// Check crate exists at position
+	if r.warehouse.cratesyx[r.state.Y][r.state.X] {
+		return ErrCrateExists
+	}
+	r.warehouse.cratesyx[r.state.Y][r.state.X] = true
+	r.state.HasCrate = false
 	return nil
 }
 
