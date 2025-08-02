@@ -491,3 +491,166 @@ func TestInvalidCommands(t *testing.T) {
 		t.Error("Robot state should have changed after first valid command")
 	}
 }
+
+func TestDiagonalMovementComplexCommands(t *testing.T) {
+	w := NewWarehouse()
+
+	// Assuming a way to create a diagonal robot exists.
+	r, err := AddDiagonalRobot(w, 5, 5)
+	if err != nil {
+		t.Fatalf("Failed to add diagonal robot: %v", err)
+	}
+
+	// Command sequence: "N E E N W W"
+	// Expected movement: NE (to 6,6), EN (to 7,7), W (to 6,7), W (to 5,7), N (to 5,7)
+	// The "N" and "W" are a pair, but the "W" and "W" are not.
+	// The "E" and "E" are not a pair.
+	// The "E" and "N" are a pair.
+	// This is why the simplified logic is better.
+
+	// Let's use the revised logic's output: "N E E N W W" -> "NE" "E" "NW" "W"
+	// The simplified logic will output: [MoveNorthEast, 'E', MoveNorthWest, 'W']
+	taskID, posCh, errCh := r.EnqueueTask("N E E N W W N")
+
+	expectedStates := []RobotState{
+		{X: 6, Y: 6}, // NE
+		{X: 7, Y: 7}, // EN
+		{X: 6, Y: 7}, // W
+		{X: 5, Y: 8}, // WN
+	}
+
+	for i, expected := range expectedStates {
+		select {
+		case state := <-posCh:
+			if state.X != expected.X || state.Y != expected.Y {
+				t.Errorf("Step %d: Expected (%d,%d), got (%d,%d) on task %v", i, expected.X, expected.Y, state.X, state.Y, taskID)
+			}
+		case err := <-errCh:
+			t.Fatalf("Task failed on step %d: %v", i, err)
+		case <-time.After(2 * CommandExecutionTime):
+			t.Fatalf("Timeout waiting for step %d", i)
+		}
+	}
+}
+
+// Table test for a number of different diagonal movement commands and cases
+func TestTableDiagonalMovementComplexCommands(t *testing.T) {
+	// ... test setup (create warehouse and diagonal robot)
+
+	testCases := []struct {
+		name               string
+		commands           string
+		initialX, initialY uint
+		expectedStates     []RobotState
+		expectError        error
+	}{
+		{
+			name:     "NE-EN-WW",
+			commands: "NEENWW",
+			initialX: 5, initialY: 5,
+			expectedStates: []RobotState{
+				{X: 6, Y: 6}, // NE
+				{X: 7, Y: 7}, // EN (diagonal)
+				{X: 6, Y: 7}, // W
+				{X: 5, Y: 7}, // W
+			},
+			expectError: nil,
+		},
+		{
+			name:     "WNW (fused)",
+			commands: "WNW",
+			initialX: 5, initialY: 5,
+			expectedStates: []RobotState{
+				{X: 4, Y: 6}, // WN (diagonal)
+				{X: 3, Y: 6}, // W
+			},
+			expectError: nil,
+		},
+		{
+			name:     "SSW (fused)",
+			commands: "SSW",
+			initialX: 5, initialY: 5,
+			expectedStates: []RobotState{
+				{X: 5, Y: 4}, // S
+				{X: 4, Y: 3}, // SW  (diagonal)
+			},
+			expectError: nil,
+		},
+		{
+			name:     "N E E N W W (with spaces)",
+			commands: "N E E N W W",
+			initialX: 5, initialY: 5,
+			expectedStates: []RobotState{
+				{X: 6, Y: 6}, // NE (fused)
+				{X: 7, Y: 7}, // EN (fused)
+				{X: 6, Y: 7}, // W
+				{X: 5, Y: 7}, // W
+			},
+			expectError: nil,
+		},
+		{
+			name:     "E E (no fusion)",
+			commands: "EE",
+			initialX: 5, initialY: 5,
+			expectedStates: []RobotState{
+				{X: 6, Y: 5}, // E
+				{X: 7, Y: 5}, // E
+			},
+			expectError: nil,
+		},
+		{
+			name:     "Diagonal out of bounds (SW from 0,0)",
+			commands: "SW",
+			initialX: 0, initialY: 0,
+			expectedStates: []RobotState{},
+			expectError:    ErrOutOfBounds,
+		},
+	}
+
+	// Loop over the test cases.
+	for _, tc := range testCases {
+		// Use t.Run() for cleaner output and isolation.
+		t.Run(tc.name, func(t *testing.T) {
+			// Setup a fresh environment for each test case.
+			w := NewWarehouse()
+			r, err := AddDiagonalRobot(w, tc.initialX, tc.initialY)
+			if err != nil {
+				t.Fatalf("Failed to add diagonal robot: %v", err)
+			}
+
+			_, posCh, errCh := r.EnqueueTask(tc.commands)
+
+			// Track the robot's state through the position channel.
+			var receivedStates []RobotState
+			for state := range posCh {
+				receivedStates = append(receivedStates, state)
+			}
+
+			// Check for errors
+			var finalErr error
+			select {
+			case err := <-errCh:
+				finalErr = err
+			default:
+				// No error, continue
+			}
+
+			// Validate the final error.
+			if finalErr != tc.expectError {
+				t.Fatalf("Expected error %v, got %v", tc.expectError, finalErr)
+			}
+
+			// Validate the final state sequence if no error was expected.
+			if tc.expectError == nil {
+				if len(receivedStates) != len(tc.expectedStates) {
+					t.Fatalf("Expected %d states, got %d", len(tc.expectedStates), len(receivedStates))
+				}
+				for i := range receivedStates {
+					if receivedStates[i] != tc.expectedStates[i] {
+						t.Errorf("Step %d: Expected state %+v, got %+v", i, tc.expectedStates[i], receivedStates[i])
+					}
+				}
+			}
+		})
+	}
+}

@@ -13,6 +13,14 @@ const (
 	CommandExecutionTime = 1 * time.Second
 )
 
+// Define constants for the movement runes for better readability.
+const (
+	MoveNorthEast rune = '↗'
+	MoveNorthWest rune = '↖'
+	MoveSouthEast rune = '↘'
+	MoveSouthWest rune = '↙'
+)
+
 // Warehouse provides an abstraction of a simulated warehouse containing robots.
 type Warehouse interface {
 	Robots() []Robot

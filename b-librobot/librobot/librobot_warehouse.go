@@ -116,6 +116,56 @@ func AddRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
 	return robot, nil
 }
 
+// AddDiagonalRobot adds a new robot to the warehouse at the specified initial coordinates.
+// This robot has the capability to move diagonally in the grid when coordinates are in the correct sequence.
+// It returns the new Robot instance and an error if the position is invalid or occupied.
+func AddDiagonalRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
+	// Type assertion to get the concrete warehouseImpl
+	wh, ok := w.(*warehouseImpl)
+	if !ok {
+		return nil, errors.New("invalid warehouse type")
+	}
+
+	isCrateWarehouse := wh.has_crates
+
+	// Safe access
+	wh.mu.Lock()
+	defer wh.mu.Unlock()
+
+	// Check desired initial position is within the specified grid size (10x10 default)
+	if initialX > GridSize || initialY > GridSize {
+		return nil, errors.New("error: initial X and Y are out of bounds")
+	}
+	if wh.gridyx[initialY][initialX] != "" {
+		return nil, errors.New("error: a robot exists at this positin")
+	}
+
+	// Initialise robot Uuid
+	robotID := uuid.New().String()
+	// Create robot with defaults
+	robot := &robotImpl{
+		id:             robotID,
+		warehouse:      wh,
+		state:          RobotState{X: initialX, Y: initialY, HasCrate: false},
+		canPickCrates:  isCrateWarehouse,
+		taskQueue:      make(chan *robotTask, 100),     // Buffered channel for tasks
+		cancelChannels: make(map[string]chan struct{}), // Initialise
+		mu:             &sync.Mutex{},
+		stopWorker:     make(chan struct{}),
+		isDiagonal:     true,
+	}
+
+	// Add robot to list robots in this warehouse
+	wh.robots[robotID] = robot
+	// Add robot to grid
+	wh.gridyx[initialY][initialX] = robotID
+
+	// Start worker
+	go robot.startWorker()
+
+	return robot, nil
+}
+
 // Adds a crate to the specified x y coordinates
 func (cw *warehouseImpl) AddCrate(x uint, y uint) error {
 	if !cw.has_crates {

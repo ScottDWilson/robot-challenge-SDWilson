@@ -23,6 +23,7 @@ type robotImpl struct {
 	mu             *sync.Mutex              // Mutex to protect robot's internal state
 	stopWorker     chan struct{}            // Channel to signal the worker goroutine to stop
 	workerStarted  bool
+	isDiagonal     bool // Flag for diagonal movement of robot
 }
 
 // robotTask represents an individual task for the robot.
@@ -131,6 +132,11 @@ func (r *robotImpl) executeTask(task *robotTask) {
 
 	commands := parseCommands(task.commands)
 
+	// For diagonal operation, check this command and the next command
+	if r.isDiagonal {
+		commands = processCommands(commands)
+	}
+
 	for i, cmd := range commands {
 		select {
 		case <-task.cancelCh:
@@ -196,8 +202,7 @@ func (r *robotImpl) executeCommand(cmd rune) error {
 	// Crate interactions
 	case 'G':
 		if !r.canPickCrates {
-			log.Println("Robot not set correctly")
-			return errors.New("error; robot can not pick crates in non-crate warehouse")
+			return ErrInvalidWarehouseType //errors.New("error; robot can not pick crates in non-crate warehouse")
 		}
 		// Get cratewarehouse implementation
 		if err := r.grabCrate(); err != nil {
@@ -206,11 +211,25 @@ func (r *robotImpl) executeCommand(cmd rune) error {
 
 	case 'D':
 		if !r.canPickCrates {
-			return errors.New("error; robot can not pick crates in non-crate warehouse")
+			return ErrInvalidWarehouseType //errors.New("error; robot can not pick crates in non-crate warehouse")
 		}
 		if err := r.dropCrate(); err != nil {
 			return err
 		}
+
+	// Phase 3 diagonal motion
+	case MoveNorthEast: // Use the defined constant
+		newY++
+		newX++
+	case MoveNorthWest:
+		newY++
+		newX--
+	case MoveSouthEast:
+		newY--
+		newX++
+	case MoveSouthWest:
+		newY--
+		newX--
 
 	default:
 		return fmt.Errorf("unknown command: %c", cmd)
@@ -218,7 +237,7 @@ func (r *robotImpl) executeCommand(cmd rune) error {
 
 	// Boundary check; uint < 0 is always false
 	if newX > GridSize || newY > GridSize || newX < 0 || newY < 0 { // newX < 0 || newY < 0 is technically redundant due to uint, but good for clarity if types change
-		return errors.New("error: command would cause robot to move out of bounds")
+		return ErrOutOfBounds //errors.New("error: command would cause robot to move out of bounds")
 	}
 
 	// Collision detection
@@ -279,4 +298,59 @@ func parseCommands(commands string) []rune {
 		}
 	}
 	return cmds
+}
+
+// processCommands takes a string of parsed commands and returns a modified string utilising diagonal motion
+func processCommands(commands []rune) []rune {
+	var processedCmds []rune
+	var lastCmd rune
+
+	log.Print("Processing commands to diagonal")
+
+	// We'll use a for loop to iterate through the input commands.
+	for _, cmd := range commands {
+		// If the last command was a cardinal direction and the current command is orthogonal,
+		// we can combine them.
+		isCardinal := func(r rune) bool {
+			return r == 'N' || r == 'S' || r == 'E' || r == 'W'
+		}
+
+		isOrthogonal := func(r1, r2 rune) bool {
+			// Check if one is N/S and the other is E/W
+			isVertical := r1 == 'N' || r1 == 'S'
+			isHorizontal := r2 == 'E' || r2 == 'W'
+			return isVertical == isHorizontal // They belong in different groups
+		}
+
+		if lastCmd != 0 && isCardinal(lastCmd) && isCardinal(cmd) && isOrthogonal(lastCmd, cmd) {
+			// Found a diagonal pair! Combine them into a single rune.
+			switch {
+			case (lastCmd == 'N' && cmd == 'E') || (lastCmd == 'E' && cmd == 'N'):
+				processedCmds = append(processedCmds, MoveNorthEast) // North-East
+				lastCmd = 0                                          // Reset the state
+			case (lastCmd == 'N' && cmd == 'W') || (lastCmd == 'W' && cmd == 'N'):
+				processedCmds = append(processedCmds, MoveNorthWest) // North-West
+				lastCmd = 0                                          // Reset the state
+			case (lastCmd == 'S' && cmd == 'E') || (lastCmd == 'E' && cmd == 'S'):
+				processedCmds = append(processedCmds, MoveSouthEast) // South-East
+				lastCmd = 0                                          // Reset the state
+			case (lastCmd == 'S' && cmd == 'W') || (lastCmd == 'W' && cmd == 'S'):
+				processedCmds = append(processedCmds, MoveSouthWest) // South-West
+				lastCmd = 0                                          // Reset the state
+			}
+		} else {
+			// No diagonal pair, so add the last command to the sequence.
+			if lastCmd != 0 {
+				processedCmds = append(processedCmds, lastCmd)
+			}
+			lastCmd = cmd
+		}
+	}
+
+	// Append any remaining command
+	if lastCmd != 0 {
+		processedCmds = append(processedCmds, lastCmd)
+	}
+
+	return processedCmds
 }
