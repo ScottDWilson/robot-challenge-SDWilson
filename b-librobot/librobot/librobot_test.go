@@ -496,7 +496,7 @@ func TestDiagonalMovementComplexCommands(t *testing.T) {
 	w := NewWarehouse()
 
 	// Assuming a way to create a diagonal robot exists.
-	r, err := AddDiagonalRobot(w, 5, 5)
+	r, err := AddDiagonalRobot(w, 5, 5, "")
 	if err != nil {
 		t.Fatalf("Failed to add diagonal robot: %v", err)
 	}
@@ -613,7 +613,7 @@ func TestTableDiagonalMovementComplexCommands(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			// Setup a fresh environment for each test case.
 			w := NewWarehouse()
-			r, err := AddDiagonalRobot(w, tc.initialX, tc.initialY)
+			r, err := AddDiagonalRobot(w, tc.initialX, tc.initialY, "Robot1")
 			if err != nil {
 				t.Fatalf("Failed to add diagonal robot: %v", err)
 			}

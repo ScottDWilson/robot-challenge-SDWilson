@@ -5,7 +5,7 @@ import (
 	"log"
 	"time"
 
-	"librobot"
+	"robot_challenge/b-librobot/librobot"
 )
 
 // Example basic usage of the library

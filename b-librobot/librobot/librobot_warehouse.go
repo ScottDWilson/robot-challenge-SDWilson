@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	"github.com/google/uuid" // Create unique identifier for each warehouse, robot
@@ -37,11 +38,6 @@ func NewCrateWarehouse() CrateWarehouse {
 	}
 	log.Println("New Crate Warehouse created.")
 	return cw
-}
-
-// Helper function to create a unique key for crate locations
-func crateKey(x, y uint) string {
-	return fmt.Sprintf("%d,%d", x, y)
 }
 
 // warehouseImpl implements the Warehouse and later CrateWarehouse interfaces.
@@ -119,11 +115,11 @@ func AddRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
 // AddDiagonalRobot adds a new robot to the warehouse at the specified initial coordinates.
 // This robot has the capability to move diagonally in the grid when coordinates are in the correct sequence.
 // It returns the new Robot instance and an error if the position is invalid or occupied.
-func AddDiagonalRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
+func AddDiagonalRobot(w Warehouse, initialX, initialY uint, namedID string) (Robot, error) {
 	// Type assertion to get the concrete warehouseImpl
 	wh, ok := w.(*warehouseImpl)
 	if !ok {
-		return nil, errors.New("invalid warehouse type")
+		return nil, ErrInvalidWarehouseType
 	}
 
 	isCrateWarehouse := wh.has_crates
@@ -139,9 +135,15 @@ func AddDiagonalRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
 	if wh.gridyx[initialY][initialX] != "" {
 		return nil, errors.New("error: a robot exists at this positin")
 	}
+	robotID := ""
+	// Use named ID if given; if not, use UUID
+	if namedID == "" {
+		// Initialise robot Uuid
+		robotID = uuid.New().String()
+	} else {
+		robotID = namedID
+	}
 
-	// Initialise robot Uuid
-	robotID := uuid.New().String()
 	// Create robot with defaults
 	robot := &robotImpl{
 		id:             robotID,
@@ -164,6 +166,14 @@ func AddDiagonalRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
 	go robot.startWorker()
 
 	return robot, nil
+}
+
+// GetRobot retrieves a robot by its ID.
+func (w *warehouseImpl) GetRobot(id string) (Robot, bool) {
+	w.mu.RLock()
+	defer w.mu.RUnlock()
+	r, ok := w.robots[id]
+	return r, ok
 }
 
 // Adds a crate to the specified x y coordinates
@@ -206,4 +216,61 @@ func (cw *warehouseImpl) DelCrate(x uint, y uint) error {
 	cw.cratesyx[y][x] = false
 	log.Printf("Crate deleted from (%d, %d).", x, y)
 	return nil
+}
+
+// ClearScreen uses ANSI escape codes to clear the terminal screen.
+func ClearScreen() {
+	// \033[H: Moves the cursor to the top-left corner
+	// \033[2J: Clears the entire screen
+	fmt.Print("\033[H\033[2J")
+}
+
+// Render draws the current state of the warehouse. It does not explicity clear screen
+func Render(w CrateWarehouse) {
+	// Retrieve warehouse implementation
+	wh, ok := w.(*warehouseImpl)
+	if !ok {
+		return
+	}
+
+	// Create a 2D array to represent the grid
+	grid := make([][]string, GridSize)
+	for i := range grid {
+		grid[i] = make([]string, GridSize)
+		for j := range grid[i] {
+			grid[i][j] = " . " // Default empty space
+
+			// Check crate and Add it
+			if wh.has_crates {
+				if wh.cratesyx[i][j] {
+					grid[i][j] = "[C]"
+				}
+			}
+		}
+	}
+
+	// Place robots on the grid (overwriting crates if necessary)
+	for i, robot := range w.Robots() {
+		state := robot.CurrentState()
+		if state.Y < GridSize && state.X < GridSize {
+			symbol := fmt.Sprintf("R%d ", i) // e.g., "R0 "
+			if state.HasCrate {
+				symbol = fmt.Sprintf("R%d*", i) // e.g., "R0*"
+			}
+			grid[state.Y][state.X] = symbol
+		}
+	}
+
+	// Build the output string and print
+	var builder strings.Builder
+	builder.WriteString("--- Warehouse Real-Time View ---\n")
+	for y := uint(0); y < GridSize; y++ {
+		for x := uint(0); x < GridSize; x++ {
+			builder.WriteString(grid[y][x])
+		}
+		builder.WriteString("\n")
+	}
+	builder.WriteString("--------------------------------\n")
+	//builder.WriteString("Enter command >>.\n")
+	fmt.Print(builder.String())
 }
