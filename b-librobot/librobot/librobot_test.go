@@ -39,7 +39,7 @@ func TestNewWarehouse(t *testing.T) {
 func TestRobot_AddRobot(t *testing.T) {
 	t.Log("Starting TestRobot_AddRobot")
 	test_warehouse := NewWarehouse()
-	test_robot, err := AddRobot(test_warehouse, 0, 0)
+	test_robot, err := AddRobot(test_warehouse, 0, 0, "R1")
 	if err != nil {
 		t.Fatalf("Unexpected error when adding robot; error: %v", err)
 	}
@@ -67,7 +67,7 @@ func TestRobot_AddRobot(t *testing.T) {
 
 	// Add a second robot, in occupied position
 	// Test adding a robot at an occupied position
-	robot2, err := AddRobot(test_warehouse, 0, 0)
+	robot2, err := AddRobot(test_warehouse, 0, 0, "R2")
 	if err == nil {
 		t.Errorf("AddRobot(w, 0, 0) with occupied position: expected error, got %v", err)
 	}
@@ -81,7 +81,7 @@ func TestRobot_AddRobot(t *testing.T) {
 
 	// Test robot added to out of bounds condition
 	// Test adding a robot out of bounds
-	r3, err := AddRobot(test_warehouse, GridSize+1, 0)
+	r3, err := AddRobot(test_warehouse, GridSize+1, 0, "R3")
 	if err == nil {
 		t.Errorf("AddRobot(w, GridSize+1, 0): expected error, got %v", err)
 	}
@@ -90,7 +90,7 @@ func TestRobot_AddRobot(t *testing.T) {
 	}
 
 	// Test adding another robot at a valid, unoccupied position
-	r4, err := AddRobot(test_warehouse, 5, 5)
+	r4, err := AddRobot(test_warehouse, 5, 5, "R4")
 	if err != nil {
 		t.Fatalf("AddRobot(w, 5, 5) failed: %v", err)
 	}
@@ -106,7 +106,7 @@ func TestRobot_AddRobot(t *testing.T) {
 func TestRobot_EnqueueTask(t *testing.T) {
 	t.Log("Starting TestRobot_EnqueueTask")
 	test_warehouse := NewWarehouse()
-	test_robot, _ := AddRobot(test_warehouse, 0, 0)
+	test_robot, _ := AddRobot(test_warehouse, 0, 0, "R1")
 
 	t.Log("Setting up TestRobot_EnqueueTask")
 	taskID, posCh, errCh := test_robot.EnqueueTask("N")
@@ -140,7 +140,7 @@ func TestRobot_EnqueueTask(t *testing.T) {
 func TestRobot_CancelTask(t *testing.T) {
 	t.Log("Starting TestRobot_CancelTask")
 	test_warehouse := NewWarehouse()
-	r, err := AddRobot(test_warehouse, 0, 0)
+	r, err := AddRobot(test_warehouse, 0, 0, "R1")
 	if err != nil {
 		t.Fatalf("Failed to add robot: %v", err)
 	}
@@ -264,7 +264,7 @@ func TestCrateWarehouse_Robot(t *testing.T) {
 	cw := NewCrateWarehouse()
 	cwImpl := cw.(*warehouseImpl)
 	// Add robot
-	r1, err := AddRobot(cw, 0, 0)
+	r1, err := AddRobot(cw, 0, 0, "R1")
 	if err != nil {
 		t.Fatalf("Failed to add robot: %v", err)
 	}
@@ -366,7 +366,7 @@ func TestCrateWarehouse_Robot(t *testing.T) {
 
 func TestWarehouse_CrateCommands(t *testing.T) {
 	w := NewWarehouse()
-	r, err := AddRobot(w, 0, 0)
+	r, err := AddRobot(w, 0, 0, "R1")
 	if err != nil {
 		t.Fatalf("Failed to add robot: %v", err)
 	}
@@ -454,7 +454,7 @@ func TestCrateManagement(t *testing.T) {
 
 func TestInvalidCommands(t *testing.T) {
 	w := NewWarehouse()
-	r, err := AddRobot(w, 5, 5)
+	r, err := AddRobot(w, 5, 5, "R1")
 	if err != nil {
 		t.Fatalf("Failed to add robot: %v", err)
 	}

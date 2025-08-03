@@ -66,7 +66,7 @@ func (w *warehouseImpl) Robots() []Robot {
 
 // AddRobot adds a new robot to the warehouse at the specified initial coordinates.
 // It returns the new Robot instance and an error if the position is invalid or occupied.
-func AddRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
+func AddRobot(w Warehouse, initialX, initialY uint, namedID string) (Robot, error) {
 	// Type assertion to get the concrete warehouseImpl
 	wh, ok := w.(*warehouseImpl)
 	if !ok {
@@ -87,8 +87,15 @@ func AddRobot(w Warehouse, initialX, initialY uint) (Robot, error) {
 		return nil, errors.New("error: a robot exists at this positin")
 	}
 
-	// Initialise robot Uuid
-	robotID := uuid.New().String()
+	robotID := ""
+
+	// Use named ID if given; if not, use UUID
+	if namedID == "" {
+		// Initialise robot Uuid
+		robotID = uuid.New().String()
+	} else {
+		robotID = namedID
+	}
 	// Create robot with defaults
 	robot := &robotImpl{
 		id:             robotID,
@@ -226,7 +233,7 @@ func ClearScreen() {
 }
 
 // Render draws the current state of the warehouse. It does not explicity clear screen
-func Render(w CrateWarehouse) {
+func Render(w CrateWarehouse, robot_map map[string]Robot) {
 	// Retrieve warehouse implementation
 	wh, ok := w.(*warehouseImpl)
 	if !ok {
@@ -238,7 +245,7 @@ func Render(w CrateWarehouse) {
 	for i := range grid {
 		grid[i] = make([]string, GridSize)
 		for j := range grid[i] {
-			grid[i][j] = " . " // Default empty space
+			grid[i][j] = " - " // Default empty space
 
 			// Check crate and Add it
 			if wh.has_crates {
@@ -250,12 +257,17 @@ func Render(w CrateWarehouse) {
 	}
 
 	// Place robots on the grid (overwriting crates if necessary)
-	for i, robot := range w.Robots() {
+	for id, robot := range wh.robots {
 		state := robot.CurrentState()
 		if state.Y < GridSize && state.X < GridSize {
-			symbol := fmt.Sprintf("R%d ", i) // e.g., "R0 "
+			label := id
+			//symbol := fmt.Sprintf("R%d ", i) // e.g., "R0 "
+			symbol := label[0:2]
 			if state.HasCrate {
-				symbol = fmt.Sprintf("R%d*", i) // e.g., "R0*"
+				//symbol = fmt.Sprintf("R%d*", i) // e.g., "R0*"
+				symbol += "*"
+			} else if wh.cratesyx[state.Y][state.X] {
+				symbol += "_"
 			}
 			grid[state.Y][state.X] = symbol
 		}
@@ -264,7 +276,8 @@ func Render(w CrateWarehouse) {
 	// Build the output string and print
 	var builder strings.Builder
 	builder.WriteString("--- Warehouse Real-Time View ---\n")
-	for y := uint(0); y < GridSize; y++ {
+	// Display grid, with 0,0 as the bottom left corner for good UX
+	for y := int(GridSize - 1); y >= 0; y-- {
 		for x := uint(0); x < GridSize; x++ {
 			builder.WriteString(grid[y][x])
 		}

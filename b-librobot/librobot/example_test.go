@@ -14,7 +14,7 @@ func Example_basicPhase1() {
 	// Create an empty warehouse
 	warehouse1 := librobot.NewWarehouse()
 	// Add 1 robot to warehouse
-	robot1, err := librobot.AddRobot(warehouse1, 0, 0)
+	robot1, err := librobot.AddRobot(warehouse1, 0, 0, "R1")
 	if err != nil {
 		log.Printf("Unexpected error when adding robot; error: %v \n", err)
 	}
@@ -43,8 +43,8 @@ func Example_mutiple() {
 	warehouse2 := librobot.NewWarehouse()
 
 	// Add 2 robot to warehouse1
-	robot1, err1 := librobot.AddRobot(warehouse1, 0, 0)
-	robot2, err2 := librobot.AddRobot(warehouse1, 5, 5)
+	robot1, err1 := librobot.AddRobot(warehouse1, 0, 0, "R1")
+	robot2, err2 := librobot.AddRobot(warehouse1, 5, 5, "R2")
 	if err1 != nil || err2 != nil {
 		log.Printf("Unexpected error when adding robot; error: %v, %v \n", err1, err2)
 	}
@@ -64,7 +64,7 @@ func Example_mutiple() {
 	// Wait short time
 	time.Sleep(2 * librobot.CommandExecutionTime)
 	// Add robot to second warehouse
-	robot3, err2 := librobot.AddRobot(warehouse2, 10, 10)
+	robot3, err2 := librobot.AddRobot(warehouse2, 10, 10, "R3")
 	taskID3, _, _ := robot3.EnqueueTask("S S W W S W") // End on 7,7
 
 	// Wait for completion...

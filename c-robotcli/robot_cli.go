@@ -23,8 +23,8 @@ var (
 	viewIsRunning  bool
 )
 
-// rootCmd represents the base command when called without any subcommands
-var rootCmd = &cobra.Command{
+// RootCmd represents the base command when called without any subcommands
+var RootCmd = &cobra.Command{
 	Use:   "robot-cli",
 	Short: "An interactive robot warehouse simulator",
 	Long: `A command-line application that simulates a warehouse with robots
@@ -49,7 +49,33 @@ var addRobotCmd = &cobra.Command{
 			fmt.Println("Error: Invalid coordinates. Please use integers.")
 			return
 		}
-		robot, err := librobot.AddRobot(warehouse, uint(x), uint(y))
+		robot, err := librobot.AddRobot(warehouse, uint(x), uint(y), id)
+		if err != nil {
+			fmt.Printf("Error adding robot: %v %v\n", id, err)
+			return
+		}
+
+		// Add to our own map of robot ids
+		robot_map[id] = robot
+		fmt.Printf("Added robot '%s' at (%d, %d).\n", id, x, y)
+	},
+}
+
+// addDiagRobotCmd represents the add_diag_robot command that enables the robot to move diagonally
+var addDiagRobotCmd = &cobra.Command{
+	Use:   "add_diag_robot [id] [x] [y]",
+	Short: "Add a new diagonal robot to the warehouse",
+	Args:  cobra.ExactArgs(3),
+	Run: func(cmd *cobra.Command, args []string) {
+		id := args[0]
+		x, errX := strconv.Atoi(args[1])
+		y, errY := strconv.Atoi(args[2])
+
+		if errX != nil || errY != nil {
+			fmt.Println("Error: Invalid coordinates. Please use integers.")
+			return
+		}
+		robot, err := librobot.AddDiagonalRobot(warehouse, uint(x), uint(y), id)
 		if err != nil {
 			fmt.Printf("Error adding robot: %v %v\n", id, err)
 			return
@@ -179,9 +205,14 @@ var viewCmd = &cobra.Command{
 			for {
 				select {
 				case <-ticker.C:
-					// Reset cursor to top left and refresh rendering
+					// Save the current cursor position
+					fmt.Print("\033[s")
+					// Move cursor to top left
 					fmt.Print("\033[H")
-					librobot.Render(warehouse)
+					// Render the view.
+					librobot.Render(warehouse, robot_map)
+					// Restore cursor to original position, where the user is typing
+					fmt.Print("\033[u")
 				case <-done:
 					fmt.Println("Stopping view...")
 					return
@@ -208,13 +239,14 @@ var stopViewCmd = &cobra.Command{
 
 // init function to set up Cobra commands
 func init() {
-	rootCmd.AddCommand(addRobotCmd)
-	rootCmd.AddCommand(addTaskCmd)
-	rootCmd.AddCommand(addCrateCmd)
-	rootCmd.AddCommand(delCrateCmd)
-	rootCmd.AddCommand(cancelTaskCmd)
-	rootCmd.AddCommand(viewCmd)
-	rootCmd.AddCommand(stopViewCmd)
+	RootCmd.AddCommand(addRobotCmd)
+	RootCmd.AddCommand(addDiagRobotCmd)
+	RootCmd.AddCommand(addTaskCmd)
+	RootCmd.AddCommand(addCrateCmd)
+	RootCmd.AddCommand(delCrateCmd)
+	RootCmd.AddCommand(cancelTaskCmd)
+	RootCmd.AddCommand(viewCmd)
+	RootCmd.AddCommand(stopViewCmd)
 }
 
 func main() {
@@ -227,7 +259,7 @@ func main() {
 	// This determines if running in interactive mode.
 	if len(os.Args) > 1 {
 		// Execute the command and exit.
-		if err := rootCmd.Execute(); err != nil {
+		if err := RootCmd.Execute(); err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
@@ -280,12 +312,12 @@ func main() {
 		args := strings.Split(input, " ")
 
 		// Pass the arguments to the root command to simulate command-line execution
-		rootCmd.SetArgs(args)
+		RootCmd.SetArgs(args)
 
 		// Execute the command and handle any errors.
 		// Cobra's Execute() method can exit the program, so we need to
 		// handle its execution carefully within the loop.
-		if err := rootCmd.Execute(); err != nil {
+		if err := RootCmd.Execute(); err != nil {
 			// Print the error but don't exit the program
 			fmt.Println(err)
 		}
