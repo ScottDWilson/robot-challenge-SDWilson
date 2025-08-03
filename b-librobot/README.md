@@ -17,8 +17,6 @@ To install the library, use the following command:
 go get github.com/ScottDWilson/robot-challenge-SDWilson/b-librobot/librobot
 ```
 
-*   Support for diagonal movement.
-
 ## Core Concepts
 
 ### Warehouse
@@ -71,6 +69,46 @@ Example command sequences:
 
 The robot will only perform a single task at a time: if additional tasks are given to the robot while is busy performing a task, those additional tasks are queued up, and will be executed once the preceding task is completed (or aborted for some reason).  Each task is identified with a unique string ID, and a task which is either in progress or enqueued can be aborted/cancelled at any time.  If the robot is unable to execute a particular command (for instance, because the command would cause the robot to run into the edges of the warehouse grid) then an error occurs, and the entire task is aborted.
 
+## Diagonal Movement
+
+To use diagonal movement, you must create a `DiagonalRobot` instead of a regular `Robot`.
+
+```go
+// Add a diagonal robot to warehouse
+robot, err := librobot.AddDiagonalRobot(warehouse, 0, 0, "R1")
+if err != nil {
+    log.Printf("Unexpected error when adding robot; error: %v \n", err)
+}
+```
+
+The robot will automatically combine pairs of orthogonal commands into diagonal movements. For example, "N E" will be combined into a single "↗" (NorthEast) command.
+
+```go
+command_string := "N E E N W W"
+```
+
+This will result in the following movements:
+
+*   N E -> ↗ (North-East)
+*   E
+*   N W -> ↖ (North-West)
+*   W
+
+## Crate Handling
+
+To use crate handling, you must create a `CrateWarehouse` instead of a regular `Warehouse`.
+
+```go
+// Create a crate warehouse
+warehouse := librobot.NewCrateWarehouse()
+
+// Add a crate to the warehouse
+err := warehouse.AddCrate(1, 1)
+if err != nil {
+    // handle error
+}
+```
+
 ## Usage
 
 Here's a basic example of how to use the library:
@@ -121,7 +159,7 @@ For more detailed documentation, please refer to the Go docs:
 go doc github.com/ScottDWilson/robot-challenge-SDWilson/b-librobot/librobot
 ```
 
-You can also view the documentation online at [GoDoc](https://pkg.go.dev/github.com/ScottDWilson/robot-challenge-SDWilson/b-librobot/librobot).
+You can also view the documentation online at [GoDoc](https://pkg.go.dev/github.com/ScottDWilson/robot-challenge-SDWilson/b-librobot/librobot). (Not actually available for interview)
 
 ## Running Tests
 
@@ -140,46 +178,6 @@ cd /b-librobot/librobot
 go test -coverprofile='coverage.out' ./...
 go tool cover -html='coverage.out'
 ```
-
-## Crate Handling
-
-To use crate handling, you must create a `CrateWarehouse` instead of a regular `Warehouse`.
-
-```go
-// Create a crate warehouse
-warehouse := librobot.NewCrateWarehouse()
-
-// Add a crate to the warehouse
-err := warehouse.AddCrate(1, 1)
-if err != nil {
-    // handle error
-}
-```
-
-## Diagonal Movement
-
-To use diagonal movement, you must create a `DiagonalRobot` instead of a regular `Robot`.
-
-```go
-// Add a diagonal robot to warehouse
-robot, err := librobot.AddDiagonalRobot(warehouse, 0, 0, "R1")
-if err != nil {
-    log.Printf("Unexpected error when adding robot; error: %v \n", err)
-}
-```
-
-The robot will automatically combine pairs of orthogonal commands into diagonal movements. For example, "N E" will be combined into a single "↗" (NorthEast) command.
-
-```go
-command_string := "N E E N W W"
-```
-
-This will result in the following movements:
-
-*   N E -> ↗ (North-East)
-*   E
-*   N W -> ↖ (North-West)
-*   W
 
 ## Errors
 

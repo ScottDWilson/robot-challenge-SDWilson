@@ -85,7 +85,7 @@ robot-cli add_diag_robot <id> <x> <y>
 **Example:**
 
 ```bash
-robot-cli add_diag_robot D2D2 2 2
+robot-cli add_diag_robot R2 2 2
 ```
 
 ### `add_task`
