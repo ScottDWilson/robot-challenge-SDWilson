@@ -151,6 +151,12 @@ func main() {
 }
 ```
 
+Example implementations can be found in example_test.go. There is an example of Phase 1, Phase 2, and Phase 3. These examples can be run using: 
+
+```bash
+go test -run Example
+```
+
 ## Documentation
 
 For more detailed documentation, please refer to the Go docs:

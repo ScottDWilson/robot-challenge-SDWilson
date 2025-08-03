@@ -22,4 +22,6 @@ var (
 	ErrRobotHasCrate = errors.New("robot is already carrying a crate")
 	// ErrRobotNotCrate indicates that the robot already carries a crate
 	ErrRobotNotCrate = errors.New("robot is not carrying a crate")
+	// ErrCrateOutOfBounds indicates that the crate is outside of the warehouse grid
+	ErrCrateOutOfBounds = errors.New("crate out of bounds")
 )

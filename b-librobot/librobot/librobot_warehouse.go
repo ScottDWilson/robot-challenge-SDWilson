@@ -185,7 +185,7 @@ func (cw *warehouseImpl) AddCrate(x uint, y uint) error {
 	defer cw.mu.Unlock()
 
 	if x > GridSize || y > GridSize {
-		return errors.New("error: crate out of bounds")
+		return ErrCrateOutOfBounds
 	}
 	// Check for a crate with a direct array lookup.
 	if cw.cratesyx[y][x] {
@@ -206,7 +206,7 @@ func (cw *warehouseImpl) DelCrate(x uint, y uint) error {
 	defer cw.mu.Unlock()
 
 	if x > GridSize || y > GridSize {
-		return errors.New("error: crate out of bounds")
+		return ErrCrateOutOfBounds
 	}
 	// Check for a crate with a direct array lookup.
 	if !cw.cratesyx[y][x] {

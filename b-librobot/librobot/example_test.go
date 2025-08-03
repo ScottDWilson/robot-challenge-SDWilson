@@ -38,6 +38,7 @@ func Example_basicPhase1() {
 	// Output:Robot Position 3 : 2
 }
 
+// Example_mutiple Provides an example implementation of multiple warehouses operating with multiple robots
 func Example_mutiple() {
 	warehouse1 := librobot.NewWarehouse()
 	warehouse2 := librobot.NewWarehouse()
@@ -64,12 +65,15 @@ func Example_mutiple() {
 	// Wait short time
 	time.Sleep(2 * librobot.CommandExecutionTime)
 	// Add robot to second warehouse
-	robot3, err2 := librobot.AddRobot(warehouse2, 10, 10, "R3")
+	robot3, err3 := librobot.AddRobot(warehouse2, 9, 9, "R3")
+	if err3 != nil {
+		log.Printf("Unexpected error when adding robot; error: %v \n", err3)
+	}
 	taskID3, _, _ := robot3.EnqueueTask("S S W W S W") // End on 7,7
 
 	// Wait for completion...
 	log.Println("Robot in action... waiting for completion...")
-	time.Sleep(8 * librobot.CommandExecutionTime) // 8* wait for robust; should be complete
+	time.Sleep(7 * librobot.CommandExecutionTime) // 8* wait for robust; should be complete
 
 	// Check robot positions
 	robot1_state := robot1.CurrentState()
@@ -85,7 +89,8 @@ func Example_mutiple() {
 
 	// Check robot positions
 	robot3_state := robot3.CurrentState()
-	if robot3_state.X != 7 || robot3_state.Y != 7 {
+	if robot3_state.X != 6 || robot3_state.Y != 6 {
+		log.Printf("robot3_state.X Y %v %v", robot3_state.X, robot3_state.Y)
 		log.Fatalf("Robot 3 failed to move to position on task %v \n", taskID3)
 	}
 
@@ -105,5 +110,79 @@ func Example_mutiple() {
 	// Output:
 	// Robot 1 End Position 3 : 4
 	// Robot 2 End Position 8 : 7
-	// Robot 3 End Position 7 : 7
+	// Robot 3 End Position 6 : 6
+}
+
+// Example_Phase2 Shows an implementation of Phase 2 where a robot can pick up and drop crates
+func Example_phase2() {
+	warehouse1 := librobot.NewCrateWarehouse()
+
+	// Add robot to warehouse1
+	robot1, err1 := librobot.AddRobot(warehouse1, 0, 0, "R1")
+	if err1 != nil {
+		log.Printf("Unexpected error when adding robot; error: %v \n", err1)
+	}
+
+	warehouse1.AddCrate(1, 1)
+
+	// Move Robot to position and pick up crate
+	robot1.EnqueueTask("NEG")
+
+	// Wait for completion
+	time.Sleep(3 * librobot.CommandExecutionTime)
+
+	robot1_state := robot1.CurrentState()
+
+	log.Println("Example Phase 2 completed successfully")
+	fmt.Printf("Robot 2 End State %v : %v Crate: %v \n", robot1_state.X, robot1_state.Y, robot1_state.HasCrate)
+
+	// Output:
+	// Robot 2 End State 1 : 1 Crate: true
+
+}
+
+// Example_Phase3 Provides an example of a robot moving diagonally
+func Example_phase3() {
+	w := librobot.NewWarehouse()
+
+	r, err := librobot.AddDiagonalRobot(w, 5, 5, "")
+	if err != nil {
+		log.Printf("Failed to add diagonal robot: %v", err)
+	}
+
+	// Command sequence: "N E E N W W"
+	// Expected movement: NE (to 6,6), EN (to 7,7), W (to 6,7), W (to 5,7), N (to 5,7)
+	// The "N" and "W" are a pair, but the "W" and "W" are not.
+	// The "E" and "E" are not a pair.
+	// The "E" and "N" are a pair.
+
+	taskID, posCh, errCh := r.EnqueueTask("N E E N W W N")
+
+	expectedStates := []librobot.RobotState{
+		{X: 6, Y: 6}, // NE
+		{X: 7, Y: 7}, // EN
+		{X: 6, Y: 7}, // W
+		{X: 5, Y: 8}, // WN
+	}
+
+	for i, expected := range expectedStates {
+		select {
+		case state := <-posCh:
+			if state.X != expected.X || state.Y != expected.Y {
+				log.Printf("Step %d: Expected (%d,%d), got (%d,%d) on task %v", i, expected.X, expected.Y, state.X, state.Y, taskID)
+			}
+		case err := <-errCh:
+			log.Printf("Task failed on step %d: %v", i, err)
+		case <-time.After(2 * librobot.CommandExecutionTime):
+			log.Printf("Timeout waiting for step %d", i)
+		}
+	}
+
+	robot_state := r.CurrentState()
+
+	log.Println("Example Phase 3 completed successfully")
+	fmt.Printf("Robot Phase 3 End State %v : %v Crate: %v \n", robot_state.X, robot_state.Y, robot_state.HasCrate)
+
+	// Output:
+	// Robot Phase 3 End State 5 : 8 Crate: false
 }

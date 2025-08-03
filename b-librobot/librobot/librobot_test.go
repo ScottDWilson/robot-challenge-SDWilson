@@ -566,8 +566,8 @@ func TestCrateManagement(t *testing.T) {
 
 	// Test AddCrate out of bounds
 	err = cw.AddCrate(GridSize+1, 1)
-	if err != ErrOutOfBounds {
-		t.Errorf("AddCrate(out of bounds): Expected %v, got %v", ErrOutOfBounds, err)
+	if err != ErrCrateOutOfBounds {
+		t.Errorf("AddCrate(out of bounds): Expected %v, got %v", ErrCrateOutOfBounds, err)
 	}
 
 	// Test DelCrate
@@ -587,8 +587,8 @@ func TestCrateManagement(t *testing.T) {
 
 	// Test DelCrate out of bounds
 	err = cw.DelCrate(GridSize+1, 1)
-	if err != ErrOutOfBounds {
-		t.Errorf("DelCrate(out of bounds): Expected %v, got %v", ErrOutOfBounds, err)
+	if err != ErrCrateOutOfBounds {
+		t.Errorf("DelCrate(out of bounds): Expected %v, got %v", ErrCrateOutOfBounds, err)
 	}
 
 	// Test Add/Del Crate on a non-CrateWarehouse (should fail)
@@ -682,10 +682,7 @@ func TestDiagonalMovementComplexCommands(t *testing.T) {
 	// The "N" and "W" are a pair, but the "W" and "W" are not.
 	// The "E" and "E" are not a pair.
 	// The "E" and "N" are a pair.
-	// This is why the simplified logic is better.
 
-	// Let's use the revised logic's output: "N E E N W W" -> "NE" "E" "NW" "W"
-	// The simplified logic will output: [MoveNorthEast, 'E', MoveNorthWest, 'W']
 	taskID, posCh, errCh := r.EnqueueTask("N E E N W W N")
 
 	expectedStates := []RobotState{
@@ -709,10 +706,11 @@ func TestDiagonalMovementComplexCommands(t *testing.T) {
 	}
 }
 
-// Table test for a number of different diagonal movement commands and cases
+// TestTableDiagonalMovementComplexCommands Table test for a number of different diagonal movement commands and cases
 func TestTableDiagonalMovementComplexCommands(t *testing.T) {
 	// ... test setup (create warehouse and diagonal robot)
 
+	// Create tables for testing states
 	testCases := []struct {
 		name               string
 		commands           string
