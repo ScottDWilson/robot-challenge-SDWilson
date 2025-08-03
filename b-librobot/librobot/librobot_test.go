@@ -3,6 +3,9 @@ package librobot
 // This file performs unit tests on the librobot package to verify correct operation
 
 import (
+	"bytes"
+	"os"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -39,7 +42,8 @@ func TestNewWarehouse(t *testing.T) {
 func TestRobot_AddRobot(t *testing.T) {
 	t.Log("Starting TestRobot_AddRobot")
 	test_warehouse := NewWarehouse()
-	test_robot, err := AddRobot(test_warehouse, 0, 0, "R1")
+	// Add robot no name
+	test_robot, err := AddRobot(test_warehouse, 0, 0, "")
 	if err != nil {
 		t.Fatalf("Unexpected error when adding robot; error: %v", err)
 	}
@@ -103,6 +107,7 @@ func TestRobot_AddRobot(t *testing.T) {
 	t.Log("Passed all add robot conditions")
 }
 
+// TestRobot_EnqueueTask Test adding tasks with commands to the queue of a robot
 func TestRobot_EnqueueTask(t *testing.T) {
 	t.Log("Starting TestRobot_EnqueueTask")
 	test_warehouse := NewWarehouse()
@@ -137,6 +142,7 @@ func TestRobot_EnqueueTask(t *testing.T) {
 
 }
 
+// TestRobot_CancelTask tests cancelling a task conditions such as in progress
 func TestRobot_CancelTask(t *testing.T) {
 	t.Log("Starting TestRobot_CancelTask")
 	test_warehouse := NewWarehouse()
@@ -259,6 +265,150 @@ func TestRobot_CancelTask(t *testing.T) {
 	}
 }
 
+// TestRobot_CancelTaskTwice Cancel task that has already been cancelled
+func TestRobot_CancelTaskTwice(t *testing.T) {
+	t.Log("Starting TestRobot_CancelTaskTwice")
+	test_warehouse := NewWarehouse()
+	r, err := AddRobot(test_warehouse, 0, 0, "R1")
+	if err != nil {
+		t.Fatalf("Failed to add robot: %v", err)
+	}
+
+	taskID, _, _ := r.EnqueueTask("N")
+
+	err = r.CancelTask(taskID)
+	if err != nil {
+		t.Fatalf("Failed to cancel task: %v", err)
+	}
+
+	// Call cancel task twice
+	err = r.CancelTask(taskID)
+	if err == nil {
+		t.Errorf("Expected error for cancelling same task twice, got %v", err)
+	}
+}
+
+// TestRobot_GrabCrate Test robot picking crate function
+func TestRobot_GrabCrate(t *testing.T) {
+	t.Log("Starting TestRobot_GrabCrate")
+	cw := NewCrateWarehouse()
+	r, err := AddRobot(cw, 0, 0, "R1")
+	if err != nil {
+		t.Fatalf("Failed to add robot: %v", err)
+	}
+
+	// Add crate
+	cw.AddCrate(0, 0)
+
+	// Try to grab crate
+	taskID, _, errCh := r.EnqueueTask("G")
+	select {
+	case finalErr := <-errCh:
+		if finalErr != nil {
+			t.Errorf("Error occured picking crate, got: %v on taskid %v", finalErr, taskID)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for crate pick command")
+	}
+}
+
+// Drop crate and drop on existing crate
+func TestRobot_DropCrate(t *testing.T) {
+	t.Log("Starting TestRobot_DropCrate")
+	cw := NewCrateWarehouse()
+	r, err := AddRobot(cw, 0, 0, "R1")
+	if err != nil {
+		t.Fatalf("Failed to add robot: %v", err)
+	}
+
+	// Add crate
+	cw.AddCrate(0, 0)
+
+	// Try to grab crate
+	taskID1, _, errCh1 := r.EnqueueTask("GN") // Grab crate, move forwards
+	select {
+	case finalErr := <-errCh1:
+		if finalErr != nil {
+			t.Errorf("Error occured picking crate, got: %v on taskid %v", finalErr, taskID1)
+		}
+	case <-time.After(4 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for crate pick command")
+	}
+
+	cw.AddCrate(0, 1)
+
+	// Try to drop crate
+	taskID2, _, errCh2 := r.EnqueueTask("D")
+	select {
+	case finalErr := <-errCh2:
+		if finalErr != ErrCrateExists {
+			t.Errorf("Unexpected error occured dropping crate, got: %v on taskid %v", finalErr, taskID2)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for incorrect crate drop command")
+	}
+
+	// Move forwards, drop crate; should be successful this time
+	// Try to drop crate
+	taskID3, _, errCh3 := r.EnqueueTask("ND")
+	select {
+	case finalErr := <-errCh3:
+		if finalErr != nil {
+			t.Errorf("Unexpected error occured dropping crate, got: %v on taskid %v", finalErr, taskID3)
+		}
+	case <-time.After(3 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for correct crate drop command")
+	}
+
+	// Check there is a crate at 0, 2
+}
+
+// TestRobot_CollisionDetection Test collision detection and correct errors are displayed
+func TestRobot_CollisionDetection(t *testing.T) {
+	t.Log("Starting TestRobot_CollisionDetection")
+	w := NewWarehouse()
+	r1, err := AddRobot(w, 0, 0, "R1")
+	if err != nil {
+		t.Fatalf("Failed to add robot: %v", err)
+	}
+
+	_, err = AddRobot(w, 1, 0, "R2")
+	if err != nil {
+		t.Fatalf("Failed to add robot: %v", err)
+	}
+
+	// Try to move robot to occupied position
+	taskID, _, errCh := r1.EnqueueTask("E")
+	select {
+	case finalErr := <-errCh:
+		if finalErr == nil {
+			t.Errorf("Expected error moving robot to occupied position, got: %v on taskid %v", finalErr, taskID)
+		}
+		if finalErr != ErrPositionOccupied {
+			t.Errorf("Unexpected error occured when moving to occupied position; got %v", finalErr)
+		}
+	case <-time.After(2 * CommandExecutionTime):
+		t.Fatal("Timeout waiting for crate drop command")
+	}
+}
+
+// TestRobot_NoListeners Test no listeners to robot
+func TestRobot_NoListeners(t *testing.T) {
+	t.Log("Starting TestRobot_NoListeners")
+	w := NewWarehouse()
+	r, err := AddRobot(w, 0, 0, "R1")
+	if err != nil {
+		t.Fatalf("Failed to add robot: %v", err)
+	}
+
+	// Enqueue task without listeners
+	r.EnqueueTask("N")
+
+	// Wait for a while to allow the task to complete
+	time.Sleep(2 * CommandExecutionTime)
+}
+
+// TestCrateWarehouse_Robot Tests setting up and manipulating a crate warehouse with various scenarios
 func TestCrateWarehouse_Robot(t *testing.T) {
 	// create new Crate warehouse
 	cw := NewCrateWarehouse()
@@ -364,6 +514,7 @@ func TestCrateWarehouse_Robot(t *testing.T) {
 
 }
 
+// TestWarehouse_CrateCommands sets up crate warehouse and validates various crate manipulation commands
 func TestWarehouse_CrateCommands(t *testing.T) {
 	w := NewWarehouse()
 	r, err := AddRobot(w, 0, 0, "R1")
@@ -452,6 +603,7 @@ func TestCrateManagement(t *testing.T) {
 	}
 }
 
+// TestInvalidCommands checks command parsing and ignores invalid commands
 func TestInvalidCommands(t *testing.T) {
 	w := NewWarehouse()
 	r, err := AddRobot(w, 5, 5, "R1")
@@ -492,10 +644,34 @@ func TestInvalidCommands(t *testing.T) {
 	}
 }
 
+// TestDiagonalRobot test basic robot function; add robot, add to invalid position etc
+func TestDiagonalRobot(t *testing.T) {
+	w := NewWarehouse()
+
+	// Add robot
+	_, err := AddDiagonalRobot(w, 5, 5, "")
+	if err != nil {
+		t.Fatalf("Failed to add diagonal robot: %v", err)
+	}
+
+	// Add robot occupied
+	// Add robot
+	_, err2 := AddDiagonalRobot(w, 5, 5, "")
+	if err2 != ErrPositionOccupied {
+		t.Fatalf("Unexpected error on position occupied: %v", err2)
+	}
+
+	// Add robot invalid
+	_, err3 := AddDiagonalRobot(w, GridSize+2, GridSize+2, "Error3")
+	if err3 != ErrOutOfBounds {
+		t.Fatalf("Unexpected error on out of bounds: %v", err3)
+	}
+}
+
+// TestDiagonalMovementComplexCommands Test complex diagonal commands
 func TestDiagonalMovementComplexCommands(t *testing.T) {
 	w := NewWarehouse()
 
-	// Assuming a way to create a diagonal robot exists.
 	r, err := AddDiagonalRobot(w, 5, 5, "")
 	if err != nil {
 		t.Fatalf("Failed to add diagonal robot: %v", err)
@@ -567,12 +743,13 @@ func TestTableDiagonalMovementComplexCommands(t *testing.T) {
 			expectError: nil,
 		},
 		{
-			name:     "SSW (fused)",
-			commands: "SSW",
+			name:     "SSWSE (fused)",
+			commands: "SSWSE",
 			initialX: 5, initialY: 5,
 			expectedStates: []RobotState{
 				{X: 5, Y: 4}, // S
 				{X: 4, Y: 3}, // SW  (diagonal)
+				{X: 5, Y: 2}, // SE  (diagonal)
 			},
 			expectError: nil,
 		},
@@ -652,5 +829,61 @@ func TestTableDiagonalMovementComplexCommands(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+// TestRender tests the output of the render engine
+func TestRender_PrintsCorrectWarehouseView(t *testing.T) {
+	// Capture output
+	var buf bytes.Buffer
+	stdout := os.Stdout
+	r, w, _ := os.Pipe()
+	os.Stdout = w
+
+	// Setup warehouse
+	wImpl := NewCrateWarehouse()
+	wImpl.AddCrate(1, 1)
+	wImpl.AddCrate(2, 2)
+	wImpl.AddCrate(3, 3)
+	robot, err := AddRobot(wImpl, 1, 1, "R1")
+	if err != nil {
+		t.Fatalf("Error adding robot: %v\n", err)
+		return
+	}
+
+	robot2, err2 := AddRobot(wImpl, 3, 3, "R2")
+	if err2 != nil {
+		t.Fatalf("Error adding robot: %v\n", err)
+		return
+	}
+
+	robot_map := make(map[string]Robot) // Map of robots to user defined robot IDs
+	// Add to our own map of robot ids
+	robot_map["R1"] = robot
+	robot_map["R2"] = robot2
+
+	robot2.EnqueueTask("G")
+	time.Sleep(1 * CommandExecutionTime)
+
+	// Call render
+	Render(wImpl, robot_map)
+
+	// Finish capturing output
+	w.Close()
+	os.Stdout = stdout
+	buf.ReadFrom(r)
+
+	// Extract the printed string
+	output := buf.String()
+
+	// Basic assertions
+	if !strings.Contains(output, "R1_") {
+		t.Errorf("Expected robot with crate under to render as 'r1_', got:\n%s", output)
+	}
+	if !strings.Contains(output, "R2*") {
+		t.Errorf("Expected robot with crate under to render as 'r2*', got:\n%s", output)
+	}
+	if !strings.Contains(output, "[C]") {
+		t.Errorf("Expected crate to render as [C], got:\n%s", output)
 	}
 }

@@ -131,6 +131,16 @@ To run the tests, use the following command:
 go test github.com/ScottDWilson/robot-challenge-SDWilson/b-librobot/librobot
 ```
 
+### Test Cover
+
+To run and view test cover; run 
+
+```bash
+cd /b-librobot/librobot
+go test -coverprofile='coverage.out' ./...
+go tool cover -html='coverage.out'
+```
+
 ## Crate Handling
 
 To use crate handling, you must create a `CrateWarehouse` instead of a regular `Warehouse`.

@@ -3,6 +3,8 @@ package main
 import (
 	"bufio"
 	"fmt"
+	"io"
+	"log"
 	"os"
 	"strconv"
 	"strings"
@@ -276,6 +278,7 @@ func main() {
 		// If the view is running, we need to move the cursor to a new line
 		// for the prompt, to prevent it from being overwritten.
 		if viewIsRunning {
+			log.SetOutput(io.Discard)
 			// Calculate the row for the prompt: GridSize + header (4 lines)
 			promptRow := librobot.GridSize + 4
 			// Move cursor to the calculated row, column 0, and clear the line

@@ -137,10 +137,10 @@ func AddDiagonalRobot(w Warehouse, initialX, initialY uint, namedID string) (Rob
 
 	// Check desired initial position is within the specified grid size (10x10 default)
 	if initialX > GridSize || initialY > GridSize {
-		return nil, errors.New("error: initial X and Y are out of bounds")
+		return nil, ErrOutOfBounds
 	}
 	if wh.gridyx[initialY][initialX] != "" {
-		return nil, errors.New("error: a robot exists at this positin")
+		return nil, ErrPositionOccupied
 	}
 	robotID := ""
 	// Use named ID if given; if not, use UUID
@@ -175,15 +175,7 @@ func AddDiagonalRobot(w Warehouse, initialX, initialY uint, namedID string) (Rob
 	return robot, nil
 }
 
-// GetRobot retrieves a robot by its ID.
-func (w *warehouseImpl) GetRobot(id string) (Robot, bool) {
-	w.mu.RLock()
-	defer w.mu.RUnlock()
-	r, ok := w.robots[id]
-	return r, ok
-}
-
-// Adds a crate to the specified x y coordinates
+// AddCrate Adds a crate to the specified x y coordinates
 func (cw *warehouseImpl) AddCrate(x uint, y uint) error {
 	if !cw.has_crates {
 		return ErrInvalidWarehouseType
@@ -193,7 +185,7 @@ func (cw *warehouseImpl) AddCrate(x uint, y uint) error {
 	defer cw.mu.Unlock()
 
 	if x > GridSize || y > GridSize {
-		return ErrOutOfBounds
+		return errors.New("error: crate out of bounds")
 	}
 	// Check for a crate with a direct array lookup.
 	if cw.cratesyx[y][x] {
@@ -204,7 +196,7 @@ func (cw *warehouseImpl) AddCrate(x uint, y uint) error {
 	return nil
 }
 
-// Deletes a crate at the specified x y coordinates
+// DelCrate Deletes the crate at the specified x y coordinates
 func (cw *warehouseImpl) DelCrate(x uint, y uint) error {
 	if !cw.has_crates {
 		return ErrInvalidWarehouseType
@@ -214,7 +206,7 @@ func (cw *warehouseImpl) DelCrate(x uint, y uint) error {
 	defer cw.mu.Unlock()
 
 	if x > GridSize || y > GridSize {
-		return ErrOutOfBounds
+		return errors.New("error: crate out of bounds")
 	}
 	// Check for a crate with a direct array lookup.
 	if !cw.cratesyx[y][x] {

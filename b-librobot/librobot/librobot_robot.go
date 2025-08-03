@@ -59,11 +59,6 @@ func (r *robotImpl) EnqueueTask(commands string) (taskID string, position chan R
 	r.taskQueue <- task // Send task to the robot's queue
 
 	return taskID, posChan, errChan
-
-	//temp := make(chan RobotState)
-	//temp_err_chan := make(chan error, 1)
-	//temp_err_chan <- errors.New("enqueue task not implemented yet")
-	//return "NA", temp, temp_err_chan
 }
 
 // CancelTask cancels a task by ID currently enqueued or in progress.
@@ -208,6 +203,7 @@ func (r *robotImpl) executeCommand(cmd rune) error {
 		if err := r.grabCrate(); err != nil {
 			return err
 		}
+		log.Printf("Robot %s: Grabbed crate at (%d, %d)", r.id, r.state.X, r.state.Y)
 
 	case 'D':
 		if !r.canPickCrates {
@@ -216,6 +212,7 @@ func (r *robotImpl) executeCommand(cmd rune) error {
 		if err := r.dropCrate(); err != nil {
 			return err
 		}
+		log.Printf("Robot %s: Dropped crate at (%d, %d)", r.id, r.state.X, r.state.Y)
 
 	// Phase 3 diagonal motion
 	case MoveNorthEast: // Use the defined constant
@@ -236,14 +233,14 @@ func (r *robotImpl) executeCommand(cmd rune) error {
 	}
 
 	// Boundary check; uint < 0 is always false
-	if newX > GridSize || newY > GridSize || newX < 0 || newY < 0 { // newX < 0 || newY < 0 is technically redundant due to uint, but good for clarity if types change
+	if newX > (GridSize-1) || newY > (GridSize-1) || newX < 0 || newY < 0 { // newX < 0 || newY < 0 is technically redundant due to uint, but good for clarity if types change
 		return ErrOutOfBounds //errors.New("error: command would cause robot to move out of bounds")
 	}
 
 	// Collision detection
 	if r.warehouse.gridyx[newY][newX] != "" && r.warehouse.gridyx[newY][newX] != r.id {
 		// Target cell is occupied by another robot
-		return errors.New("error: Position is currently occupied. Could not complete task for robot")
+		return ErrPositionOccupied
 	}
 
 	// Update grid: vacate old position, occupy new position
@@ -258,7 +255,7 @@ func (r *robotImpl) executeCommand(cmd rune) error {
 	return nil
 }
 
-// Picks crate at current robot position
+// grabCrate Picks crate at current robot position; sets RobotState.HasCrate flag
 func (r *robotImpl) grabCrate() error {
 	// Check robot carrying crate
 	if r.state.HasCrate {
@@ -273,7 +270,7 @@ func (r *robotImpl) grabCrate() error {
 	return nil
 }
 
-// Drops crate at current robot position
+// dropCrate Drops crate at current robot position; sets RobotState.HasCrate flag
 func (r *robotImpl) dropCrate() error {
 	// Check robot carrying crate
 	if !r.state.HasCrate {

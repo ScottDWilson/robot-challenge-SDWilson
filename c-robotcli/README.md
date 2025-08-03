@@ -6,26 +6,15 @@ The Robot Simulator CLI is an interactive command-line application for simulatin
 
 ## Installation
 
-1.  **Prerequisites:** Ensure you have Go installed on your system. You can download it from [go.dev](https://go.dev/dl/).
+**Prerequisites:** Ensure you have Go installed on your system. You can download it from [go.dev](https://go.dev/dl/).
 
-2.  **Clone the repository:**
+Clone the repository and run the CLI:
 
-    ```bash
-    git clone github.com/ScottDWilson/robot-challenge-SDWilson
-    cd robot-challenge-SDWilson/c-robotcli
-    ```
-
-3.  **Initialize the Go module:**
-
-    ```bash
-    go mod init robot-cli
-    ```
-
-4.  **Get the Cobra dependency:**
-
-    ```bash
-    go get github.com/spf13/cobra
-    ```
+```bash
+git clone https://github.com/ScottDWilson/robot-challenge-SDWilson.git
+cd c-robotcli
+go run .
+```
 
 ## Usage
 
@@ -210,6 +199,16 @@ robot-cli stop_view
 ```
 
 This command halts the rendering of the warehouse state.
+
+### `exit`
+
+Stops the cli and closes the program
+
+**Usage:**
+
+```bash
+robot-cli exit
+```
 
 ## Simulation Visualization
 
