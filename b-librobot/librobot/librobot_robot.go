@@ -53,10 +53,10 @@ func (r *robotImpl) EnqueueTask(commands string) (taskID string, position chan R
 	}
 	r.mu.Lock()
 
-	r.mu.Unlock()
-
 	r.cancelChannels[taskID] = task.cancelCh
 	r.taskQueue <- task // Send task to the robot's queue
+
+	r.mu.Unlock() // Unlock after changes to robot
 
 	return taskID, posChan, errChan
 }
